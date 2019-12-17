@@ -238,7 +238,6 @@
   #f)
 )
   
-  ;(ormap (lambda (x) (subset? x (s b))) winning-positions))
 
 ;; хэш-таблица для мемоизированной функции эвристичечкой оценки
 (define f-h-hash (make-hash))
@@ -289,7 +288,11 @@
 (define tic-tac%
   (class game%
     (super-new
-     [draw-game?       (compose set-empty? free-cells)]
+     [draw-game?       (lambda (x)
+                         (let ((x-score (count-open-4 (xs x))) (o-score (count-open-4 (os x))))
+                           (and (= x-score o-score) (set-empty? (free-cells x)))
+                         )               
+                       )]
      [possible-moves   (compose set->list free-cells)]
      [show-state       show-board])))
  
@@ -308,9 +311,22 @@
 (define (input-move m)
             (case m
                    ('q (exit))
-                   ('(1 1) m) ('(1 2) m) ('(1 3) m)
-                   ('(2 1) m) ('(2 2) m) ('(2 3) m)
-                   ('(3 1) m) ('(3 2) m) ('(3 3) m)
+                ('(1 1 1) m) ('(1 1 2) m) ('(1 1 3) m) ('(1 1 4) m) 
+		('(1 2 1) m) ('(1 2 2) m) ('(1 2 3) m) ('(1 2 4) m) 
+		('(1 3 1) m) ('(1 3 2) m) ('(1 3 3) m) ('(1 3 4) m) 
+		('(1 4 1) m) ('(1 4 2) m) ('(1 4 3) m) ('(1 4 4) m) 
+		('(2 1 1) m) ('(2 1 2) m) ('(2 1 3) m) ('(2 1 4) m) 
+		('(2 2 1) m) ('(2 2 2) m) ('(2 2 3) m) ('(2 2 4) m) 
+		('(2 3 1) m) ('(2 3 2) m) ('(2 3 3) m) ('(2 3 4) m) 
+		('(2 4 1) m) ('(2 4 2) m) ('(2 4 3) m) ('(2 4 4) m) 
+		('(3 1 1) m) ('(3 1 2) m) ('(3 1 3) m) ('(3 1 4) m) 
+		('(3 2 1) m) ('(3 2 2) m) ('(3 2 3) m) ('(3 2 4) m) 
+		('(3 3 1) m) ('(3 3 2) m) ('(3 3 3) m) ('(3 3 4) m) 
+		('(3 4 1) m) ('(3 4 2) m) ('(3 4 3) m) ('(3 4 4) m) 
+		('(4 1 1) m) ('(4 1 2) m) ('(4 1 3) m) ('(4 1 4) m) 
+		('(4 2 1) m) ('(4 2 2) m) ('(4 2 3) m) ('(4 2 4) m) 
+		('(4 3 1) m) ('(4 3 2) m) ('(4 3 3) m) ('(4 3 4) m) 
+		('(4 4 1) m) ('(4 4 2) m) ('(4 4 3) m) ('(4 4 4) m) 
                    (else (input-move (read))))
 				   )
 (define user-A 
@@ -332,12 +348,14 @@
  
 ;; Объекты-игроки, делающие слабые ходы.
 (define dummy-A 
-  (new (force (interactive-player x%)) [name "Dummy A"] [look-ahead 0]))
+  (new (force (interactive-player x%)) [name "Dummy A"] [look-ahead 1]))
 (define dummy-B 
-  (new (force (interactive-player o%)) [name "Dummy B"] [look-ahead 0]))
+  (new (force (interactive-player o%)) [name "Dummy B"] [look-ahead 1]))
 ;; старт игры двух слабых игроков
 ; (!(start-game dummy-A dummy-B empty-board))
 
 ;; в конце игры можно записать хэш-таблицу в файл (write-hash "f-h.txt")
 (define (write-hash filename) (with-output-to-file filename (lambda () (write (serialize f-h-hash)))))
 (!(start-game dummy-A dummy-B empty-board))
+;(!(start-game user-A user-B empty-board))
+;(!(start-game player-A player-B empty-board))
