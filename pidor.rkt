@@ -76,6 +76,7 @@
     ;; make-move :: State (State -> Move) -> (Move State Symbol)
     (define/public (make-move S move)
       (cond
+        ((my-win? S) (values '() S 'win))
         ((my-loss? S)   (values '() S 'loss))         
         ((draw-game? S) (values '() S 'draw))   
         (else (let* ((m* (! (move S)))
@@ -108,9 +109,9 @@
       (! (show-state S*))
       (! (case status
            ['stop (displayln "The game was interrupted.")]
-           ['win  (printf "~a won the game!" name)]
-           ['loss (printf "~a lost the game!" name)]
-           ['draw (printf "Draw!")]
+           ['win  (printf "\n~a won the game!" name)]
+           ['loss (printf "\n~a lost the game!" name)]
+           ['draw (printf "\nDraw!")]
            [else (send opponent your-turn S*)])))))
  
  
@@ -146,14 +147,16 @@
 ;; Описания крестиков-ноликов
  
 ;; Структура представляющая ситуацию на игровой доске. В структуре два поля -- список координат крестиков и список координат ноликов
-(serializable-struct board (x o) #:transparent)
+(serializable-struct board (x o x-score o-score) #:transparent)
  
 ;; геттеры полей структуры
 (define xs board-x)
 (define os board-o)
- 
+(define x-score board-x-score)
+(define o-score board-o-score)
+
 ;; в начале игровая доска пуста
-(define empty-board (board (set) (set)))
+(define empty-board (board (set) (set) 0 0))
  
 ;; перечень всех ячеек игровой доски
 (define all-cells
@@ -218,6 +221,29 @@
 (set '(1 1 1) '(2 2 2) '(3 3 3) '(4 4 4)) (set '(1 1 4) '(2 2 3) '(3 3 2) '(4 4 1)) (set '(4 1 1) '(3 2 2) '(2 3 3) '(1 4 4)) (set '(4 1 4) '(3 2 3) '(2 3 2) '(1 4 1))
 )
 )
+
+
+;;находим список линий на доске, проходящих через позицию cell
+(define (find-lines cell)
+   (filter
+     (lambda (line)
+       (set-member? line cell)
+     )
+     winning-positions
+   )
+)
+
+;; hash из позиции на доске в список линий проходящих через нее
+(define cell2lines
+  (make-hash
+    (let loop ((lst '()) (cells (set->list all-cells)))
+        (if (empty? cells) lst
+            (loop (cons (cons (car cells) (find-lines (car cells))) lst) (cdr cells))
+        )
+    )
+  )
+)
+
 ;; получить все ячейки игровой доски, не занятые ходами одного из игроков 
 (define (open-4-cells os/xs b)
   (set-subtract all-cells (os/xs b)))
@@ -228,14 +254,9 @@
 
 
 ;; проверка, является ли ситуация на игровой доске выигрышной
+;; победа достигается в случае полного заполнения поля и большего числа линий у выбранного игрока
 (define ((wins? s p) b)
-  (if (set-empty? (free-cells b))
-      (let ((current (count-open-4 (s b))) (other (count-open-4 (p b)))) (begin
-                                                                           (displayln current)
-                                                                           (displayln other)
-      (> current other)
-      ))
-  #f)
+  (and (set-empty? (free-cells b)) (> (s b) (p b)))
 )
   
 
@@ -261,10 +282,15 @@
 (define (f-h s)
   (- (count-open-4 (open-4-cells os s)) (count-open-4 (open-4-cells xs s)))
 )  
- 
+
+(define (score-addition move s)
+  (foldl (lambda (line score) (if (subset? (set-subtract line (set move)) s) (+ score 1) score)) 0 (hash-ref cell2lines move))
+)
+
+
 ;; функции для осуществления ходов игроков
-(define (x-move b m)  (board (set-add (xs b) m) (os b)))
-(define (o-move b m)  (board (xs b) (set-add (os b) m)))
+(define (x-move b m)  (board (set-add (xs b) m) (os b) (+ (x-score b) (score-addition m (xs b))) (o-score b)))
+(define (o-move b m)  (board (xs b) (set-add (os b) m) (x-score b) (+ (o-score b) (score-addition m (os b)))))
  
 ;; вывод игровой доски в текстовом виде
 (define (show-board b)
@@ -280,31 +306,25 @@
     (displayln "")
   )
   (displayln "   1 2 3 4      1 2 3 4      1 2 3 4      1 2 3 4  ")
-  (displayln (count-open-4 (xs b)))
-  (displayln (count-open-4 (os b)))
+  (printf "x-score: ~a\n" (x-score b))
+  (printf "o-score: ~a\n-----------------------------------------------\n" (o-score b))
 )
 ;;--------------------------------------------------------------------
 ;; Описание класса-игры крестики-нолики
 (define tic-tac%
   (class game%
     (super-new
-     [draw-game?       (lambda (x)
-                         (let ((x-score (count-open-4 (xs x))) (o-score (count-open-4 (os x))))
-                           (and (= x-score o-score) (set-empty? (free-cells x)))
-                         )               
+     [draw-game?       (lambda (x)   ;ничья достигается при полном заполнении поля и равном количестве заполненных линий каждым игроком 
+                           (and (set-empty? (free-cells x)) (= (x-score x) (o-score x)))     
                        )]
      [possible-moves   (compose set->list free-cells)]
      [show-state       show-board])))
  
 ;; описания партнеров для крестиков-ноликов
 (define-partners tic-tac%
-  (x% #:win (wins? xs os) #:move x-move)
-  (o% #:win (wins? os xs) #:move o-move))
- 
-;; объекты-игроки ИИ
-(define player-A (new (force (interactive-player x%)) [name "A"] [look-ahead 6]))
- 
-(define player-B (new (force (interactive-player o%)) [name "B"] [look-ahead 6]))
+  (x% #:win (wins? x-score o-score) #:move x-move)
+  (o% #:win (wins? o-score x-score) #:move o-move))
+
  
 ;; объекты-игроки, принимающие ввод пользователя
 ;; проверка ввода частичная
@@ -345,17 +365,17 @@
  )
 ;; старт игры двух человек
 ; (!(start-game user-A user-B empty-board))
+
+(define la 3)
  
-;; Объекты-игроки, делающие слабые ходы.
-(define dummy-A 
-  (new (force (interactive-player x%)) [name "Dummy A"] [look-ahead 1]))
-(define dummy-B 
-  (new (force (interactive-player o%)) [name "Dummy B"] [look-ahead 1]))
-;; старт игры двух слабых игроков
-; (!(start-game dummy-A dummy-B empty-board))
+;; объекты-игроки ИИ
+(define player-A (new (force (interactive-player x%)) [name "A"] [look-ahead la]))
+ 
+(define player-B (new (force (interactive-player o%)) [name "B"] [look-ahead la]))
 
 ;; в конце игры можно записать хэш-таблицу в файл (write-hash "f-h.txt")
 (define (write-hash filename) (with-output-to-file filename (lambda () (write (serialize f-h-hash)))))
-(!(start-game dummy-A dummy-B empty-board))
+(display "Initialization complete\n-----------------------------------------------")
 ;(!(start-game user-A user-B empty-board))
-;(!(start-game player-A player-B empty-board))
+(!(start-game player-A player-B empty-board))
+;(hash-ref cell2lines '(1 1 1))
